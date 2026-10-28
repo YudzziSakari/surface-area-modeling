@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Площа поверхонь: Інтерактив</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; margin: 0; padding: 20px; background: #121212; color: #ffffff;}
+        .sidebar { width: 380px; background: #1e1e1e; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); overflow-y: auto; max-height: 95vh; }
+        .content { flex-grow: 1; margin-left: 20px; height: 95vh; background: #1e1e1e; border-radius: 12px; }
+        h2 { margin-top: 0; font-size: 20px; color: #ff69b4; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .control-block { margin-top: 15px; }
+        label { display: flex; justify-content: space-between; font-size: 14px; color: #ccc; }
+        input[type=range] { width: 100%; margin-top: 5px; accent-color: #ff69b4; }
+        select { width: 100%; padding: 10px; margin-top: 5px; background: #2d2d2d; color: white; border: 1px solid #444; border-radius: 6px; font-size: 16px; }
+
+        .math-card { background: #252526; border-left: 4px solid #ff69b4; padding: 15px; margin-top: 15px; border-radius: 6px; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        .math-card.eq-card { border-left-color: #00ffff; }
+        .math-subtitle { font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .formula-container { display: flex; flex-direction: column; gap: 10px; font-size: 1.1em; overflow-x: auto; padding-bottom: 5px;}
+        .result-highlight { color: #ff69b4; font-weight: bold; font-size: 1.2em; text-align: right; margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px; }
+
+        .anim-btn {
+            width: 100%; padding: 12px; margin-top: 20px;
+            background: #ff69b4; color: white; border: none;
+            border-radius: 6px; font-size: 15px; font-weight: bold;
+            cursor: pointer; transition: background 0.3s;
+        }
+        .anim-btn:hover { background: #ff1493; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>Налаштування форми</h2>
+    <select id="input_shape">
+        <option value="Сфера">Сфера</option>
+        <option value="Циліндр">Циліндр</option>
+        <option value="Конус">Конус</option>
+        <option value="Зрізаний конус" selected>Зрізаний конус</option>
+    </select>
+
+    <div id="block_radius_base" class="control-block">
+        <label><span id="label_radius_base">Радіус основи (R):</span> <span id="val_radius_base">5.0</span></label>
+        <input type="range" id="input_radius_base" min="1" max="10" step="0.1" value="5">
+    </div>
+
+    <div id="block_radius_top" class="control-block">
+        <label><span id="label_radius_top">Радіус верху (R₂):</span> <span id="val_radius_top">2.0</span></label>
+        <input type="range" id="input_radius_top" min="0.1" max="10" step="0.1" value="2">
+    </div>
+
+    <div id="block_height" class="control-block">
+        <label><span>Висота (H):</span> <span id="val_height">10.0</span></label>
+        <input type="range" id="input_height" min="1" max="15" step="0.1" value="10">
+    </div>
+
+    <button id="btn_animate" class="anim-btn">▶ Показати утворення фігури</button>
+
+    <h2 style="margin-top: 30px;">Аналітика та Обчислення</h2>
+
+    <div class="math-card eq-card">
+        <div class="math-subtitle">Аналітичний запис в просторі ℝ³</div>
+        <div class="formula-container" id="math_eq"></div>
+    </div>
+
+    <div class="math-card">
+        <div class="math-subtitle">Метод Вищої Математики</div>
+        <div class="formula-container" id="math_integral"></div>
+        <div class="result-highlight" id="res_integral"></div>
+    </div>
+
+    <div class="math-card">
+        <div class="math-subtitle">Шкільний метод (Бічна площа)</div>
+        <div class="formula-container" id="math_school"></div>
+        <div class="result-highlight" id="res_school"></div>
+    </div>
+</div>
+
+<div id="plot" class="content"></div>
+
+<script>
+    const shapeSel = document.getElementById('input_shape');
+
+    const blockR = document.getElementById('block_radius_base');
+    const blockr = document.getElementById('block_radius_top');
+    const blockH = document.getElementById('block_height');
+    const labelR = document.getElementById('label_radius_base');
+
+    const rInp = document.getElementById('input_radius_base'), valR = document.getElementById('val_radius_base');
+    const rTopInp = document.getElementById('input_radius_top'), valr = document.getElementById('val_radius_top');
+    const hInp = document.getElementById('input_height'), valH = document.getElementById('val_height');
+
+    const divSchool = document.getElementById('math_school');
+    const divIntegral = document.getElementById('math_integral');
+    const divEq = document.getElementById('math_eq');
+    const resSchool = document.getElementById('res_school');
+    const resIntegral = document.getElementById('res_integral');
+
+    let currentAnimationId = null;
+
+    function linspace(start, stop, num) {
+        let arr = [];
+        let step = (stop - start) / (Math.max(num - 1, 1));
+        for (let i = 0; i < num; i++) arr.push(start + step * i);
+        return arr;
+    }
+
+    function renderMath(texString, element) {
+        katex.render(texString, element, { throwOnError: false, displayMode: true });
+    }
+
+    function updateVisibility() {
+        let shape = shapeSel.value;
+        if (shape === 'Сфера') {
+            blockR.style.display = 'block'; labelR.textContent = 'Радіус (R):';
+            blockr.style.display = 'none'; blockH.style.display = 'none';
+        } else if (shape === 'Циліндр' || shape === 'Конус') {
+            blockR.style.display = 'block'; labelR.textContent = 'Радіус основи (R):';
+            blockr.style.display = 'none'; blockH.style.display = 'block';
+        } else if (shape === 'Зрізаний конус') {
+            blockR.style.display = 'block'; labelR.textContent = 'Радіус основи (R₁):';
+            blockr.style.display = 'block'; blockH.style.display = 'block';
+        }
+    }
+
+    function updateMathInfo() {
+        let shape = shapeSel.value;
+        let R = parseFloat(rInp.value);
+        let r = parseFloat(rTopInp.value);
+        let H = parseFloat(hInp.value);
+
+        valR.textContent = R.toFixed(1);
+        valr.textContent = r.toFixed(1);
+        valH.textContent = H.toFixed(1);
+
+        let texSchool = "", texIntegral = "", texEq = "";
+        let finalS = 0;
+
+        if (shape === 'Сфера') {
+            finalS = 4 * Math.PI * R * R;
+            texSchool = `S = 4\\pi R^2`;
+            texIntegral = `y(x) = \\sqrt{R^2 - x^2}, \\quad x \\in [-R, R] \\\\ S = 2\\pi \\int_{-R}^{R} y \\sqrt{1 + (y')^2} \\,dx`;
+            texEq = `y^2 + z^2 = R^2 - x^2`;
+        } else if (shape === 'Циліндр') {
+            finalS = 2 * Math.PI * R * H;
+            texSchool = `S = 2\\pi R H`;
+            texIntegral = `y(x) = R, \\quad x \\in [0, H] \\\\ S = 2\\pi \\int_{0}^{H} R \\,dx`;
+            texEq = `y^2 + z^2 = R^2`;
+        } else if (shape === 'Конус') {
+            let L = Math.sqrt(R*R + H*H);
+            finalS = Math.PI * R * L;
+            texSchool = `S = \\pi R L`;
+            texIntegral = `y(x) = \\frac{R}{H}x, \\quad x \\in [0, H] \\\\ S = 2\\pi \\int_{0}^{H} y \\sqrt{1 + (y')^2} \\,dx`;
+            texEq = `y^2 + z^2 = \\left(\\frac{R}{H}x\\right)^2`;
+        } else if (shape === 'Зрізаний конус') {
+            let R1 = R;
+            let R2 = r;
+            let L = Math.sqrt(Math.pow(R1 - R2, 2) + H*H);
+            finalS = Math.PI * (R1 + R2) * L;
+            texSchool = `S = \\pi (R_1+R_2) L`;
+            texIntegral = `y(x) = R_1 - \\frac{R_1-R_2}{H}x, \\quad x \\in [0, H] \\\\ S = 2\\pi \\int_{0}^{H} y \\sqrt{1 + (y')^2} \\,dx`;
+            texEq = `y^2 + z^2 = \\left(R_1 - \\frac{R_1-R_2}{H}x\\right)^2`;
+        }
+
+        renderMath(texSchool, divSchool);
+        renderMath(texIntegral, divIntegral);
+        renderMath(texEq, divEq);
+        resSchool.innerText = `S ≈ ${finalS.toFixed(2)}`;
+        resIntegral.innerText = `S ≈ ${finalS.toFixed(2)}`;
+    }
+
+    // Створення кришок (торців)
+    function createCap(z_pos, cap_R, u_arr) {
+        let cx = [], cy = [], cz = [];
+        let r_arr = linspace(0, cap_R, 10);
+        for(let i=0; i<10; i++) {
+            cx[i] = []; cy[i] = []; cz[i] = [];
+            for(let j=0; j<u_arr.length; j++) {
+                cx[i].push(r_arr[i] * Math.cos(u_arr[j]));
+                cy[i].push(r_arr[i] * Math.sin(u_arr[j]));
+                cz[i].push(z_pos);
+            }
+        }
+        return {
+            x: cx, y: cy, z: cz,
+            type: 'surface',
+            colorscale: [[0, 'pink'], [1, 'deeppink']],
+            showscale: false,
+            contours: { x: {show: false}, y: {show: false}, z: {show: false} },
+            hoverinfo: 'none'
+        };
+    }
+
+    function updatePlot(sweepAngle = 2 * Math.PI) {
+        let shape = shapeSel.value;
+        let R = parseFloat(rInp.value);
+        let r = parseFloat(rTopInp.value);
+        let H = parseFloat(hInp.value);
+
+        let n = 40;
+        let u = linspace(0, sweepAngle, n);
+        let v = linspace(0, Math.PI, n);
+        let z_lin = linspace(0, H, n); // Математично це тепер "x", але візуально ми малюємо вгору по осі z Plotly
+
+        let x = [], y = [], z = [];
+
+        if (shape === 'Сфера') {
+            for (let i = 0; i < n; i++) {
+                x[i] = []; y[i] = []; z[i] = [];
+                for (let j = 0; j < n; j++) {
+                    x[i].push(R * Math.sin(v[i]) * Math.cos(u[j]));
+                    y[i].push(R * Math.sin(v[i]) * Math.sin(u[j]));
+                    z[i].push(-R * Math.cos(v[i]));
+                }
+            }
+        } else if (shape === 'Циліндр') {
+            for (let i = 0; i < n; i++) {
+                x[i] = []; y[i] = []; z[i] = [];
+                for (let j = 0; j < n; j++) {
+                    x[i].push(R * Math.cos(u[j]));
+                    y[i].push(R * Math.sin(u[j]));
+                    z[i].push(z_lin[i]);
+                }
+            }
+        } else if (shape === 'Конус') {
+            for (let i = 0; i < n; i++) {
+                x[i] = []; y[i] = []; z[i] = [];
+                let R_curr = R * (H - z_lin[i]) / H;
+                for (let j = 0; j < n; j++) {
+                    x[i].push(R_curr * Math.cos(u[j]));
+                    y[i].push(R_curr * Math.sin(u[j]));
+                    z[i].push(z_lin[i]);
+                }
+            }
+        } else if (shape === 'Зрізаний конус') {
+            for (let i = 0; i < n; i++) {
+                x[i] = []; y[i] = []; z[i] = [];
+                let R_curr = R - (R - r) * z_lin[i] / H;
+                for (let j = 0; j < n; j++) {
+                    x[i].push(R_curr * Math.cos(u[j]));
+                    y[i].push(R_curr * Math.sin(u[j]));
+                    z[i].push(z_lin[i]);
+                }
+            }
+        }
+
+        let data = [{
+            x: x, y: y, z: z,
+            type: 'surface',
+            colorscale: [[0, 'pink'], [1, 'deeppink']],
+            showscale: false,
+            contours: { x: {show: false}, y: {show: false}, z: {show: false} }
+        }];
+
+        // Додаємо основи для фігур (тільки якщо кут повний або майже повний)
+        if (sweepAngle >= 2 * Math.PI - 0.01) {
+            if (shape === 'Циліндр') {
+                data.push(createCap(0, R, u));
+                data.push(createCap(H, R, u));
+            } else if (shape === 'Конус') {
+                data.push(createCap(0, R, u));
+            } else if (shape === 'Зрізаний конус') {
+                data.push(createCap(0, R, u));
+                data.push(createCap(H, r, u));
+            }
+        }
+
+        // Твірна лінія (Generatrix)
+        let genX = [], genY = [], genZ = [];
+        for (let i = 0; i < n; i++) {
+            genX.push(x[i][n-1]);
+            genY.push(y[i][n-1]);
+            genZ.push(z[i][n-1]);
+        }
+        data.push({
+            type: 'scatter3d',
+            mode: 'lines',
+            x: genX, y: genY, z: genZ,
+            line: {color: '#00ffff', width: 8},
+            showlegend: false, hoverinfo: 'none'
+        });
+
+        // Сітка (Mesh)
+        let numGridLines = 12;
+        let stepGrid = Math.max(1, Math.floor(n / numGridLines));
+        let lineX = [], lineY = [], lineZ = [];
+
+        for (let j = 0; j < n; j += stepGrid) {
+            for (let i = 0; i < n; i++) {
+                lineX.push(x[i][j]); lineY.push(y[i][j]); lineZ.push(z[i][j]);
+            }
+            lineX.push(null); lineY.push(null); lineZ.push(null);
+        }
+
+        for (let i = 0; i < n; i += stepGrid) {
+            for (let j = 0; j < n; j++) {
+                lineX.push(x[i][j]); lineY.push(y[i][j]); lineZ.push(z[i][j]);
+            }
+            if (sweepAngle >= 2 * Math.PI - 0.01) {
+                lineX.push(x[i][0]); lineY.push(y[i][0]); lineZ.push(z[i][0]);
+            }
+            lineX.push(null); lineY.push(null); lineZ.push(null);
+        }
+
+        data.push({
+            type: 'scatter3d', mode: 'lines', x: lineX, y: lineY, z: lineZ,
+            line: {color: 'rgba(255,255,255,0.4)', width: 1.5}, showlegend: false, hoverinfo: 'none'
+        });
+
+        // Зберігаємо камеру
+        let currentCamera = { eye: {x: 1.5, y: 1.5, z: 1.2} };
+        let plotDiv = document.getElementById('plot');
+        if (plotDiv.layout && plotDiv.layout.scene && plotDiv.layout.scene.camera) {
+            currentCamera = plotDiv.layout.scene.camera;
+        }
+
+        // ХИТРІСТЬ З ВІСЯМИ: Вісь Z графіка ми називаємо "Вісь X (вісь обертання)"
+        let layout = {
+            datarevision: Date.now(),
+            margin: {l: 0, r: 0, b: 0, t: 0},
+            scene: {
+                aspectmode: 'cube',
+                camera: currentCamera,
+                xaxis: { title: 'Вісь Y', range: [-12, 12], showgrid: true, gridcolor: '#444', zerolinecolor: '#888', tickfont: {color: '#888'} },
+                yaxis: { title: 'Вісь Z', range: [-12, 12], showgrid: true, gridcolor: '#444', zerolinecolor: '#888', tickfont: {color: '#888'} },
+                zaxis: { title: 'Вісь X (обертання)', range: [-12, 12], showgrid: true, gridcolor: '#444', zerolinecolor: '#888', tickfont: {color: '#888'}, titlefont: {color: '#00ffff'} }
+            },
+            paper_bgcolor: '#1e1e1e',
+        };
+
+        Plotly.react('plot', data, layout);
+    }
+
+    function animateRotation() {
+        if (currentAnimationId) cancelAnimationFrame(currentAnimationId);
+        let angle = 0.05;
+
+        function step() {
+            angle += 0.08;
+            if (angle >= 2 * Math.PI) {
+                updatePlot(2 * Math.PI);
+                return;
+            }
+            updatePlot(angle);
+            currentAnimationId = requestAnimationFrame(step);
+        }
+        step();
+    }
+
+    document.getElementById('btn_animate').addEventListener('click', animateRotation);
+
+    shapeSel.addEventListener('change', () => {
+        updateVisibility();
+        updateMathInfo();
+        Plotly.purge('plot');
+        animateRotation();
+    });
+
+    [rInp, rTopInp, hInp].forEach(inp => {
+        inp.addEventListener('input', () => {
+            updateMathInfo();
+            updatePlot(2 * Math.PI);
+        });
+    });
+
+    updateVisibility();
+    updateMathInfo();
+    animateRotation();
+</script>
+</body>
+</html>
